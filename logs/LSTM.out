@@ -1,0 +1,93 @@
+Train path: True
+Valid path: True
+Test path : True
+Train: 1299155  Valid: 6357  Test: 10112
+Train size after length-stratified subsampling: 100000
+Saved cleaned & stratified data to data/processed
+English char vocab size: 26
+Native  char vocab size: 66
+
+Top 20 English chars:
+[('a', 174154), ('i', 64930), ('n', 60393), ('r', 57919), ('h', 56822), ('e', 47469), ('t', 42851), ('s', 42631), ('o', 34234), ('d', 31456), ('l', 31422), ('u', 29478), ('k', 29031), ('m', 27349), ('p', 21835), ('y', 19527), ('c', 19381), ('g', 19022), ('b', 18453), ('v', 15512)]
+
+Top 20 Native chars:
+[('ा', 71943), ('र', 56308), ('्', 54763), ('ि', 35941), ('न', 32886), ('क', 32080), ('स', 31604), ('े', 30752), ('ल', 30253), ('ी', 28268), ('म', 26041), ('ं', 24577), ('ो', 22760), ('व', 22173), ('त', 21327), ('प', 20757), ('य', 20681), ('ु', 17553), ('ग', 15832), ('ट', 15724)]
+Device: cuda
+Vocab size (incl specials): 98
+Example chars: ['<pad>', '<sos>', '<eos>', '<unk>', 'a', 'ा', 'i', 'n', 'r', 'h', 'र', '्', 'e', 't', 's', 'ि', 'o', 'न', 'क', 'स']
+Train batches: 782 Valid batches: 50 Test batches: 79
+Model parameters: 4057442
+
+=== Epoch 1/12 ===
+Train loss: 1.3862  Valid loss: 1.1335
+Val exact_acc: 0.2710  char_acc: 0.7846  mean_edit: 1.418
+Saved best model.
+
+=== Epoch 2/12 ===
+Train loss: 0.7596  Valid loss: 1.0362
+Val exact_acc: 0.3426  char_acc: 0.8214  mean_edit: 1.174
+Saved best model.
+
+=== Epoch 3/12 ===
+Train loss: 0.6377  Valid loss: 0.9555
+Val exact_acc: 0.3764  char_acc: 0.8347  mean_edit: 1.087
+Saved best model.
+
+=== Epoch 4/12 ===
+Train loss: 0.5984  Valid loss: 0.9170
+Val exact_acc: 0.4040  char_acc: 0.8457  mean_edit: 1.012
+Saved best model.
+
+=== Epoch 5/12 ===
+Train loss: 0.5610  Valid loss: 0.8821
+Val exact_acc: 0.4214  char_acc: 0.8531  mean_edit: 0.966
+Saved best model.
+
+=== Epoch 6/12 ===
+Train loss: 0.5310  Valid loss: 0.8447
+Val exact_acc: 0.4324  char_acc: 0.8547  mean_edit: 0.957
+Saved best model.
+
+=== Epoch 7/12 ===
+Train loss: 0.5131  Valid loss: 0.8690
+Val exact_acc: 0.4362  char_acc: 0.8556  mean_edit: 0.949
+
+=== Epoch 8/12 ===
+Train loss: 0.4916  Valid loss: 0.8630
+Val exact_acc: 0.4450  char_acc: 0.8576  mean_edit: 0.938
+
+=== Epoch 9/12 ===
+Train loss: 0.4759  Valid loss: 0.8337
+Val exact_acc: 0.4392  char_acc: 0.8575  mean_edit: 0.938
+Saved best model.
+
+=== Epoch 10/12 ===
+Train loss: 0.4698  Valid loss: 0.8186
+Val exact_acc: 0.4394  char_acc: 0.8557  mean_edit: 0.950
+Saved best model.
+
+=== Epoch 11/12 ===
+Train loss: 0.4488  Valid loss: 0.8225
+Val exact_acc: 0.4510  char_acc: 0.8607  mean_edit: 0.916
+
+=== Epoch 12/12 ===
+Train loss: 0.4382  Valid loss: 0.8197
+Val exact_acc: 0.4513  char_acc: 0.8615  mean_edit: 0.913
+Loaded checkpoint epoch 10
+
+=== Test results ===
+Exact word accuracy: 0.4229628164556962
+Char accuracy (approx): 0.8513161492739231
+Mean edit distance: 1.0253164556962024
+
+Sample predictions:
+SRC: maitrologist  GOLD: मैट्रोलॉजिस्ट  PRED: मेट्रोलॉजिस्ट
+SRC: phwcs  GOLD: पीएचडब्ल्यूसीएस  PRED: पीएचवीसीएस
+SRC: pratidwandiyon  GOLD: प्रतिद्वन्दियों  PRED: प्रतिद्वं्दियों
+SRC: pratiyukti  GOLD: प्रतियुक्ति  PRED: प्रतियुक्ति
+SRC: eksisatens  GOLD: एक्सिसटेंस  PRED: एकसीसेटेंस
+SRC: filmnirmata  GOLD: फ़िल्मनिर्माता  PRED: फ़िल्मनिर्माता
+SRC: adrgh  GOLD: अद्र्घ  PRED: अद्र्घ
+SRC: ladhege  GOLD: लड़ेगे  PRED: लढ़ेगे
+SRC: administresh  GOLD: एडमिनिस्ट्रेश  PRED: एडमिनिस्ट्रेश
+SRC: shiwalapurwa  GOLD: शिवालापुरवा  PRED: शिवालापुरवा
