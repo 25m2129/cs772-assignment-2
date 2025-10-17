@@ -1,0 +1,155 @@
+Train size after length-stratified subsampling: 100000
+Vocab size: 98
+
+✅ Checkpoint found at models/seq2seq_lstm.pth. Skipping training.
+Loaded model from epoch 10
+
+==================================================
+=== Decoding Comparison (Greedy vs. Beam B=5) ===
+Eval decode (Greedy): 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 79/79 [00:10<00:00,  7.67it/s]
+
+--- Greedy Decoding Results (ACC@1) ---
+Exact word accuracy (ACC@1): 0.4229
+Char accuracy (approx):      0.8513
+Mean edit distance:          1.025
+Eval with beam_search_decode: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 79/79 [02:58<00:00,  2.26s/it]
+
+--- Beam Search (B=5) Results (ACC@1) ---
+Exact word accuracy (ACC@1): 0.4387
+Char accuracy (approx):      0.8562
+Mean edit distance:          0.992
+
+--- Sample Comparison (Greedy vs. Beam) ---
+SRC: maitrologist    | GOLD: मैट्रोलॉजिस्ट   | GREEDY PRED: मेट्रोलॉजिस्ट   | BEAM PRED: मेट्रोलॉजिस्ट
+SRC: phwcs           | GOLD: पीएचडब्ल्यूसीएस | GREEDY PRED: पीएचवीसीएस      | BEAM PRED: पीएचवीसीएस
+SRC: pratidwandiyon  | GOLD: प्रतिद्वन्दियों | GREEDY PRED: प्रतिद्वं्दियों | BEAM PRED: प्रतिद्वं्दियों
+SRC: pratiyukti      | GOLD: प्रतियुक्ति     | GREEDY PRED: प्रतियुक्ति     | BEAM PRED: प्रतियुक्ति
+SRC: eksisatens      | GOLD: एक्सिसटेंस      | GREEDY PRED: एकसीसेटेंस      | BEAM PRED: एकसीसेटेंस
+SRC: filmnirmata     | GOLD: फ़िल्मनिर्माता  | GREEDY PRED: फ़िल्मनिर्माता  | BEAM PRED: फ़िल्मनिर्माता
+SRC: adrgh           | GOLD: अद्र्घ          | GREEDY PRED: अद्र्घ          | BEAM PRED: अदर्घ
+SRC: ladhege         | GOLD: लड़ेगे          | GREEDY PRED: लढ़ेगे          | BEAM PRED: लढ़ेगे
+SRC: administresh    | GOLD: एडमिनिस्ट्रेश   | GREEDY PRED: एडमिनिस्ट्रेश   | BEAM PRED: एडमिनिस्ट्रेश
+SRC: shiwalapurwa    | GOLD: शिवालापुरवा     | GREEDY PRED: शिवालापुरवा     | BEAM PRED: शिवालापुरवा
+
+==================================================
+=== NEWS Metrics Evaluation (N=10 Candidates) ===
+NEWS Eval (N=10): 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 79/79 [06:08<00:00,  4.67s/it]
+
+=== NEWS Metrics Results ===
+ACC (Top-1):  0.440797
+Mean F-score: 0.882611
+MRR:          0.540458
+MAP_ref:      0.440797
+
+==================================================
+=== Character-Level Error Analysis (Using Greedy Decoding) ===
+Exact word accuracy (Recalculated): 0.4229 (5836 errors)
+
+--- Top character confusions (gold -> predicted), sorted by frequency: ---
+'ा' -> '<eps>'      count=852
+'्' -> '<eps>'      count=572
+'़' -> '<eps>'      count=337
+'ी' -> 'ि'      count=246
+'ं' -> 'न'      count=194
+'ि' -> 'ी'      count=193
+'ट' -> 'त'      count=192
+'ू' -> 'ु'      count=172
+'ड' -> 'द'      count=144
+'त' -> 'ट'      count=138
+'य' -> '<eps>'      count=114
+'े' -> '<eps>'      count=114
+'न' -> 'ं'      count=112
+'ॉ' -> 'ो'      count=111
+'ं' -> '<eps>'      count=107
+'द' -> 'ड'      count=95
+'ै' -> 'े'      count=69
+'ं' -> 'ँ'      count=68
+'ू' -> '<eps>'      count=67
+'ण' -> 'न'      count=62
+'े' -> 'ै'      count=62
+'ल' -> '<eps>'      count=58
+'ु' -> 'ू'      count=58
+'ा' -> 'ै'      count=56
+'त' -> '<eps>'      count=53
+'ए' -> '<eps>'      count=51
+'र' -> '<eps>'      count=48
+'न' -> '<eps>'      count=47
+'ठ' -> 'थ'      count=46
+'ः' -> 'ह'      count=45
+
+Summary of edit operation counts (for non-equal operations): {'replace': 6411, 'delete': 2241, 'insert': 2056}
+Wrote char confusions to lstm_error_analysis_char_confusions.csv
+
+--- Top Roman n-grams (n<= 3) by word-level error rate (min support = 20): ---
+N     NGRAM SUPPORT    ERRORS     ERR_RATE  
+---------------------------------------------
+3     'bly  ' 27    27    1.000     
+2     'sy   ' 24    23    0.958     
+3     'abl  ' 32    30    0.938     
+3     'wad  ' 27    25    0.926     
+3     'sid  ' 27    25    0.926     
+3     'dat  ' 26    24    0.923     
+3     'ral  ' 24    22    0.917     
+2     'ff   ' 22    20    0.909     
+2     'ue   ' 33    29    0.879     
+3     'yoo  ' 40    35    0.875     
+3     'dab  ' 46    40    0.870     
+2     'za   ' 49    42    0.857     
+3     'ees  ' 35    30    0.857     
+2     'sn   ' 21    18    0.857     
+2     'az   ' 54    46    0.852     
+3     'alm  ' 20    17    0.850     
+3     'vil  ' 32    27    0.844     
+2     'ob   ' 41    34    0.829     
+1     'z    ' 165   136   0.824     
+2     'ea   ' 95    78    0.821     
+3     'ass  ' 22    18    0.818     
+3     'ite  ' 22    18    0.818     
+3     'ori  ' 32    26    0.812     
+3     'ins  ' 32    26    0.812     
+3     'ida  ' 32    26    0.812     
+3     'ine  ' 42    34    0.810     
+3     'mer  ' 26    21    0.808     
+3     'dan  ' 81    65    0.802     
+3     'ayi  ' 25    20    0.800     
+3     'tte  ' 20    16    0.800     
+Wrote roman ngram stats to lstm_error_analysis_roman_ngrams.csv
+
+--- Levenshtein edit distance over test set (Greedy): ---
+Mean: 1.025
+Median: 1.0
+Max: 14
+
+--- Sample errors (Greedy Decoding, showing up to 30): ---
+SRC: maitrologist     GOLD: मैट्रोलॉजिस्ट    PRED: मेट्रोलॉजिस्ट
+SRC: phwcs            GOLD: पीएचडब्ल्यूसीएस  PRED: पीएचवीसीएस
+SRC: pratidwandiyon   GOLD: प्रतिद्वन्दियों  PRED: प्रतिद्वं्दियों
+SRC: eksisatens       GOLD: एक्सिसटेंस       PRED: एकसीसेटेंस
+SRC: ladhege          GOLD: लड़ेगे           PRED: लढ़ेगे
+SRC: chootie          GOLD: चूतीए            PRED: चूटीए
+SRC: kursiyo          GOLD: कुर्सियॉ         PRED: कुरसियो
+SRC: enseeaardablyusee  GOLD: एनसीआरडब्ल्यूसी  PRED: एनसीएअर्डब्लयूजी
+SRC: shivaalapurva    GOLD: शिवालापुरवा      PRED: शिवालापूर्व
+SRC: deedablyuen      GOLD: डीडब्ल्यूएन      PRED: डीडाब्ल्युएन
+SRC: praansangalee    GOLD: प्राणसंगली       PRED: प्रांसंगली
+SRC: sainapur         GOLD: सैनपुर           PRED: सैनापुर
+SRC: dimak            GOLD: दिमाक            PRED: दिमक
+SRC: jyadaa           GOLD: ज़यादा           PRED: ज्याा
+SRC: jadule           GOLD: जडूले            PRED: जाडुले
+SRC: viraangnaaon     GOLD: वीरांगनाओं       PRED: विरांगनाओं
+SRC: udhegee          GOLD: उड़ेगी           PRED: उधेगी
+SRC: wishwas          GOLD: विष्वास          PRED: विश्वास
+SRC: aaryanas         GOLD: आर्यनस           PRED: आर्यनास
+SRC: shamtal          GOLD: शमलात            PRED: शममाल
+SRC: chatakate        GOLD: चटकाते           PRED: चटकते
+SRC: dhumrapaan       GOLD: धुम्रपान         PRED: धुम्रपां
+SRC: neemkathana      GOLD: नीमकाथाना        PRED: नीमकथाना
+SRC: khaayal          GOLD: क़ायल            PRED: खायल
+SRC: jivati           GOLD: जीवति            PRED: जीवती
+SRC: rookvaaee        GOLD: रुकवाई           PRED: रूकवाई
+SRC: nigmaayukt       GOLD: निगमायुक्त       PRED: निग्मायुक्त
+SRC: uthaaeange       GOLD: उठाएँगे          PRED: उठाईंगे
+SRC: badhane          GOLD: बड़ने            PRED: बधने
+SRC: hathdharmitaa    GOLD: हठधर्मिता        PRED: हाधर्मिता
+
+Analysis Complete. Check generated CSV files.
