@@ -135,15 +135,16 @@ def greedy_decode_app(model, src_tensor, src_len, sos_idx, eos_idx, max_len=128)
 
 # interactive inputs
 input_text = st.text_input("English (roman) input to transliterate:", value="namaste")
-decode_mode = st.radio("Decode mode", ["greedy"], index=0)
-max_len = st.slider("Max decode length", min_value=32, max_value=256, value=128)
+# Hardcode max_len as the UI element was removed
+max_len = 128 
 
 if st.button("Translate") and data is not None:
     char2idx = data["char2idx"]; idx2char = data["idx2char"]
     sos = data["sos"]; eos = data["eos"]; unk = data["unk"]
     ids = encode_text(input_text, char2idx, sos, eos, unk)
     src = torch.tensor([ids], dtype=torch.long)
-    ys = greedy_decode_app(data["model"], src, len(ids), sos, eos, max_len=max_len)[0]
+    # The decoding call remains the same, using the hardcoded max_len
+    ys = greedy_decode_app(data["model"], src, len(ids), sos, eos, max_len=max_len)[0] 
     if eos in ys:
         cut = ys.index(eos)
         out_ids = ys[1:cut]
