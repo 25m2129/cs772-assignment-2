@@ -3,7 +3,6 @@ import pandas as pd
 import random
 import re
 import unicodedata
-import math
 from pathlib import Path
 from collections import Counter
 from tqdm import tqdm
@@ -461,3 +460,219 @@ print("Mean edit distance:", test_metrics['mean_edit'])
 print("\nSample predictions:")
 for s, gold, pred in test_metrics['samples']:
     print(f"SRC: {s:<15}  GOLD: {gold:<15}  PRED: {pred}")
+
+# --------------------------------------------------------------------------------------
+
+from collections import Counter, defaultdict
+from difflib import SequenceMatcher
+from itertools import zip_longest
+import csv
+import math
+import statistics
+from tqdm import tqdm
+
+# The main script already calculated test_metrics and all_errors using evaluate_predictions_with_errors.
+# We will replicate the decoding part or use a streamlined version if needed, but since the
+# evaluate_predictions_with_errors function is already very useful, let's use it
+# and then add the N-gram analysis.
+
+# PARAMETERS for the analysis
+MIN_SUPPORT_NGRAM = 20    # minimum number of examples containing an n-gram to consider it
+TOP_K = 30                # how many top confusions / ngrams to print
+NGRAM_MAX = 3             # consider roman n-grams up to length 3
+SAVE_PREFIX = "lstm_error_analysis" # CSV prefix
+MAX_DECODE_LEN = 64       # Should match the max_len used in evaluate_predictions
+
+# Helper function to align characters for detailed error analysis
+def align_chars(gold, pred):
+    """
+    Returns list of tuples (op, gold_char, pred_char)
+    op in {"equal","replace","delete","insert"}
+    Uses difflib.SequenceMatcher for a reasonable character alignment.
+    """
+    sm = SequenceMatcher(None, gold, pred)
+    ops = []
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag == 'equal':
+            for ga, pa in zip(gold[i1:i2], pred[j1:j2]):
+                ops.append(('equal', ga, pa))
+        elif tag == 'replace':
+            # align roughly pairwise; lengths may differ
+            for ga, pa in zip_longest(gold[i1:i2], pred[j1:j2], fillvalue=''):
+                ops.append(('replace', ga, pa))
+        elif tag == 'delete':
+            for ga in gold[i1:i2]:
+                ops.append(('delete', ga, ''))
+        elif tag == 'insert':
+            for pa in pred[j1:j2]:
+                ops.append(('insert', '', pa))
+    return ops
+
+# --- 2. DECODING (Replicate/Extract the decoding logic to get all predictions) ---
+
+def get_all_predictions(encoder, decoder, loader, device, max_len=64):
+    """Decodes sequences and collects (source, gold, prediction) tuples."""
+    encoder.eval(); decoder.eval();
+    all_records = []
+    with torch.no_grad():
+        for src, src_lens, _, _, src_texts, tgt_texts in tqdm(loader, desc="Collecting Predictions"):
+            src = src.to(device); src_lens = src_lens.to(device);
+            enc_outputs, _ = encoder(src, src_lens);
+            batch_size = src.size(0);
+
+            # Initialize decoder state and input (same as evaluate_predictions)
+            h = torch.zeros(decoder.rnn.num_layers, batch_size, decoder.rnn.hidden_size, device=device)
+            c = torch.zeros_like(h)
+            hidden = (h, c)
+            input_token = torch.tensor([SOS_IDX]*batch_size, device=device)
+            outputs_tokens = torch.full((batch_size, max_len), PAD_IDX, dtype=torch.long, device=device)
+            enc_mask = torch.arange(enc_outputs.size(1), device=device).unsqueeze(0) < src_lens.unsqueeze(1)
+
+            for t in range(1, max_len):
+                logits, hidden, _ = decoder.forward_step(input_token, hidden, enc_outputs, enc_mask)
+                top1 = logits.argmax(1)
+                outputs_tokens[:, t] = top1
+                input_token = top1
+                # Stop if all batches have predicted EOS or max_len reached
+                # This simple loop without breaking is usually fine for fixed max_len
+
+            # Process outputs
+            for i in range(batch_size):
+                out_ids = outputs_tokens[i].tolist()
+                # Find EOS and cut
+                if EOS_IDX in out_ids:
+                    cut = out_ids.index(EOS_IDX)
+                    out_ids = out_ids[1:cut]
+                else:
+                    out_ids = out_ids[1:] # Remove SOS
+                
+                pred = ids_to_seq(out_ids, idx2char)
+                gold = tgt_texts[i]
+                src_text = src_texts[i]
+                all_records.append((src_text, gold, pred))
+
+    return all_records
+
+# Run the decoding
+print("\n--- Running LSTM Error Analysis on Test Set ---")
+all_records = get_all_predictions(encoder, decoder, test_loader, DEVICE, max_len=MAX_DECODE_LEN)
+print(f"Total test examples processed: {len(all_records)}")
+
+# --- 3. CHARACTER-LEVEL CONFUSION COUNTS ---
+
+confusions = Counter()         # (gold_char, pred_char) -> count
+confusion_by_type = Counter()  # counts of replace/delete/insert
+total_chars = 0
+total_errors = 0
+
+for src_text, gold, pred in all_records:
+    if gold != pred:
+        total_errors += 1
+    
+    ops = align_chars(gold, pred)
+    for op, gch, pch in ops:
+        total_chars += (1 if op != 'insert' else 0) # count only positions in gold for accuracy denom
+        if op == 'equal':
+            continue
+        # use placeholder for empty side
+        gkey = gch if gch != '' else '<eps>'
+        pkey = pch if pch != '' else '<eps>'
+        confusions[(gkey, pkey)] += 1
+        confusion_by_type[op] += 1
+
+exact_accuracy = 1 - (total_errors / len(all_records))
+print(f"Exact word accuracy (Recalculated): {exact_accuracy:.4f} ({total_errors} errors)")
+
+# Print top substitution confusions (excluding pure insertions from pred-only)
+print("\n--- Top character confusions (gold -> predicted), sorted by frequency: ---")
+top_conf = [((g,p),c) for (g,p),c in confusions.most_common() if g != '<eps>'] # Focus on Gold characters (Replacements/Deletions)
+for (g,p),cnt in top_conf[:TOP_K]:
+    print(f"'{g}' -> '{p}'     count={cnt}")
+
+print("\nSummary of edit operation counts (for non-equal operations):", dict(confusion_by_type))
+
+# Save confusion table to CSV
+with open(f"{SAVE_PREFIX}_char_confusions.csv", "w", encoding="utf-8", newline='') as f:
+    writer = csv.writer(f)
+    writer.writerow(["gold_char", "pred_char", "count"])
+    for (g,p),cnt in confusions.most_common():
+        writer.writerow([g, p, cnt])
+print(f"Wrote char confusions to {SAVE_PREFIX}_char_confusions.csv")
+
+# --- 4. ROMAN N-GRAM => EXAMPLE-LEVEL ERROR ASSOCIATION ---
+
+ngram_totals = defaultdict(int)
+ngram_errors = defaultdict(int)
+
+for src_text, gold, pred in all_records:
+    is_err = (gold != pred)
+    s = src_text.lower()
+    
+    for n in range(1, NGRAM_MAX+1):
+        seen = set()
+        for i in range(len(s)-n+1):
+            ng = s[i:i+n]
+            # skip spaces and duplicates within the word
+            if ' ' in ng:
+                continue
+            if ng in seen:
+                continue
+            seen.add(ng)
+            
+            ngram_totals[(n,ng)] += 1
+            if is_err:
+                ngram_errors[(n,ng)] += 1
+
+# compute error rate per ngram (filter by support)
+ngram_stats = []
+for (n,ng),tot in ngram_totals.items():
+    if tot < MIN_SUPPORT_NGRAM:
+        continue
+    errs = ngram_errors.get((n,ng), 0)
+    rate = errs / tot
+    ngram_stats.append((n, ng, tot, errs, rate))
+    
+# sort by error rate (and then by support)
+ngram_stats_sorted = sorted(ngram_stats, key=lambda x: (-x[4], -x[2]))
+
+print(f"\n--- Top Roman n-grams (n<= {NGRAM_MAX}) by word-level error rate (min support = {MIN_SUPPORT_NGRAM}): ---")
+print("{:<5} {:<5} {:<10} {:<10} {:<10}".format("N", "NGRAM", "SUPPORT", "ERRORS", "ERR_RATE"))
+print("-" * 45)
+for n, ng, tot, errs, rate in ngram_stats_sorted[:TOP_K]:
+    print("{:<5} '{:<5}' {:<10} {:<10} {:<10.3f}".format(n, ng, tot, errs, rate))
+
+# Save ngram stats to CSV
+with open(f"{SAVE_PREFIX}_roman_ngrams.csv", "w", encoding="utf-8", newline='') as f:
+    writer = csv.writer(f)
+    writer.writerow(["n", "ngram", "support", "errors", "error_rate"])
+    for (n,ng),tot in sorted(ngram_totals.items(), key=lambda x:(x[0][0], -x[1])):
+        errs = ngram_errors.get((n,ng), 0)
+        rate = errs/tot
+        writer.writerow([n, ng, tot, errs, rate])
+print(f"Wrote roman ngram stats to {SAVE_PREFIX}_roman_ngrams.csv")
+
+# --- 5. PER-EXAMPLE EDIT DISTANCE DISTRIBUTION ---
+
+# The simple_levenshtein function is not needed, as the complex one is already in the main script.
+edists = [levenshtein(gold, pred) for (_, gold, pred) in all_records]
+
+print("\n--- Levenshtein edit distance over test set: ---")
+if edists:
+    print(f"Mean: {statistics.mean(edists):.3f}")
+    print(f"Median: {statistics.median(edists)}")
+    print(f"Max: {max(edists)}")
+else:
+    print("No predictions were made.")
+
+# --- 6. SAMPLE ERRORS ---
+
+print("\n--- Sample errors (showing up to 30): ---")
+count_shown = 0
+for src, gold, pred in all_records:
+    if gold != pred:
+        print(f"SRC: {src:<15}  GOLD: {gold:<15}  PRED: {pred}")
+        count_shown += 1
+        if count_shown >= 30:
+            break
+
+print("\nAnalysis Complete. Check generated CSV files.")

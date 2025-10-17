@@ -665,29 +665,34 @@ def evaluate_transformer(model, loader, DEVICE, decode_mode='greedy', beam_width
 # Cell T8 — Train loop (Transformer) + checkpointing
 N_TRF_EPOCHS = 12
 best_val_loss = float('inf')
-SAVE_TRF = SAVE_DIR / "transformer_trf.pth"
+SAVE_TRF = SAVE_DIR / "transformer_trf.pth" # Ensure SAVE_TRF is defined
 
-for epoch in range(1, N_TRF_EPOCHS + 1):
-    print(f"\n=== TRF Epoch {epoch}/{N_TRF_EPOCHS} ===")
-    tr_loss = train_epoch_trf(model_trf, train_loader, optimizer_trf, criterion_trf, DEVICE)
-    val_loss = eval_epoch_trf(model_trf, valid_loader, criterion_trf, DEVICE)
-    print(f"Train loss: {tr_loss:.4f}  Val loss: {val_loss:.4f}")
+# --- Start of Modification ---
+if SAVE_TRF.exists():
+    print(f"Checkpoint found at {SAVE_TRF}. Skipping training.")
+else:
+    print(f"No checkpoint found at {SAVE_TRF}. Starting training for {N_TRF_EPOCHS} epochs.")
+    # --- Original T8 content indented below ---
+    for epoch in range(1, N_TRF_EPOCHS + 1):
+        print(f"\n=== TRF Epoch {epoch}/{N_TRF_EPOCHS} ===")
+        tr_loss = train_epoch_trf(model_trf, train_loader, optimizer_trf, criterion_trf, DEVICE)
+        val_loss = eval_epoch_trf(model_trf, valid_loader, criterion_trf, DEVICE)
+        print(f"Train loss: {tr_loss:.4f}  Val loss: {val_loss:.4f}")
 
-    # quick decode metrics (greedy) on validation
-    metrics = evaluate_transformer(model_trf, valid_loader, DEVICE, decode_mode='greedy', max_len=TRF_MAX_LEN)
-    print("Val exact_acc: {:.4f}  char_acc: {:.4f}  mean_edit: {:.3f}".format(metrics['exact_accuracy'], metrics['char_accuracy'], metrics['mean_edit']))
+        # quick decode metrics (greedy) on validation
+        metrics = evaluate_transformer(model_trf, valid_loader, DEVICE, decode_mode='greedy', max_len=TRF_MAX_LEN)
+        print("Val exact_acc: {:.4f}  char_acc: {:.4f}  mean_edit: {:.3f}".format(metrics['exact_accuracy'], metrics['char_accuracy'], metrics['mean_edit']))
 
-    if val_loss < best_val_loss:
-        best_val_loss = val_loss
-        torch.save({
-            'epoch': epoch,
-            'model_state': model_trf.state_dict(),
-            'optimizer': optimizer_trf.state_dict(),
-            'char2idx': char2idx,
-            'idx2char': idx2char,
-        }, SAVE_TRF)
-        print("Saved best transformer checkpoint.")
-
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            torch.save({
+                'epoch': epoch,
+                'model_state': model_trf.state_dict(),
+                'optimizer': optimizer_trf.state_dict(),
+                'char2idx': char2idx,
+                'idx2char': idx2char,
+            }, SAVE_TRF)
+            print("Saved best transformer checkpoint.")
 
 # In[102]:
 
@@ -702,11 +707,197 @@ print("\n=== Test (greedy) ===")
 test_metrics_g = evaluate_transformer(model_trf, test_loader, DEVICE, decode_mode='greedy', max_len=TRF_MAX_LEN)
 print("Exact:", test_metrics_g['exact_accuracy'], "Char acc:", test_metrics_g['char_accuracy'], "Mean edit:", test_metrics_g['mean_edit'])
 
-print("\n=== Test (beam width=5) — this is slower ===")
-test_metrics_b = evaluate_transformer(model_trf, test_loader, DEVICE, decode_mode='beam', beam_width=5, max_len=TRF_MAX_LEN)
-print("Exact (beam5):", test_metrics_b['exact_accuracy'], "Char acc:", test_metrics_b['char_accuracy'], "Mean edit:", test_metrics_b['mean_edit'])
+# print("\n=== Test (beam width=5) — this is slower ===")
+# test_metrics_b = evaluate_transformer(model_trf, test_loader, DEVICE, decode_mode='beam', beam_width=5, max_len=TRF_MAX_LEN)
+# print("Exact (beam5):", test_metrics_b['exact_accuracy'], "Char acc:", test_metrics_b['char_accuracy'], "Mean edit:", test_metrics_b['mean_edit'])
 
 print("\nSample predictions (greedy):")
 for s,g,p in test_metrics_g['samples']:
     print(f"SRC: {s}  GOLD: {g}  PRED: {p}")
 
+
+
+
+# === error_analysis.py ===
+from collections import Counter, defaultdict
+from difflib import SequenceMatcher
+from itertools import zip_longest
+import csv
+
+# PARAMETERS
+MIN_SUPPORT_NGRAM = 20   # minimum number of examples containing an n-gram to consider it
+TOP_K = 30               # how many top confusions / ngrams to print
+NGRAM_MAX = 3            # consider roman n-grams up to length 3
+SAVE_PREFIX = "error_analysis"  # CSV prefix
+
+# helper: convert model greedy output ids -> string using your ids_to_seq/idx2char
+# we assume ids_to_seq is available; otherwise define a small helper using idx2char
+def ids_to_text_from_model(ids):
+    # ids is a list/iterable of ints (including SOS at pos 0). Use ids_to_seq from Transformer.py if available.
+    # Fallback: reconstruct using idx2char if ids_to_seq not available.
+    try:
+        return ids_to_seq(ids, idx2char)   # prefer existing helper
+    except Exception:
+        chars = [idx2char.get(i, "") for i in ids]
+        # remove special tokens
+        chars = [c for c in chars if c not in ("<sos>", "<eos>", "<pad>", "<unk>")]
+        return ''.join(chars)
+
+# Align gold and pred Devanagari strings and produce operations:
+def align_chars(gold, pred):
+    """
+    Returns list of tuples (op, gold_char, pred_char)
+    op in {"equal","replace","delete","insert"}
+    gold_char or pred_char may be '' for insert/delete.
+    Uses difflib.SequenceMatcher for a reasonable character alignment.
+    """
+    sm = SequenceMatcher(None, gold, pred)
+    ops = []
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag == 'equal':
+            for ga, pa in zip(gold[i1:i2], pred[j1:j2]):
+                ops.append(('equal', ga, pa))
+        elif tag == 'replace':
+            # align roughly pairwise; lengths may differ
+            for ga, pa in zip_longest(gold[i1:i2], pred[j1:j2], fillvalue=''):
+                ops.append(('replace', ga, pa))
+        elif tag == 'delete':
+            for ga in gold[i1:i2]:
+                ops.append(('delete', ga, ''))
+        elif tag == 'insert':
+            for pa in pred[j1:j2]:
+                ops.append(('insert', '', pa))
+    return ops
+
+# 1) Run model on test set and collect predictions + golds
+model_trf.eval()
+all_records = []  # list of tuples: (src_text, gold_text, pred_text)
+with torch.no_grad():
+    for src, src_lens, tgt, tgt_lens, src_texts, tgt_texts in test_loader:
+        ys = greedy_decode_trf(model_trf, src, src_lens, max_len=128)  # (batch, seq)
+        batch = src.size(0)
+        for i in range(batch):
+            out_ids = ys[i].tolist()
+            if EOS_IDX in out_ids:
+                cut = out_ids.index(EOS_IDX)
+                out_ids = out_ids[1:cut]
+            else:
+                out_ids = out_ids[1:]
+            pred = ids_to_text_from_model(out_ids)
+            gold = tgt_texts[i]
+            src_text = src_texts[i]
+            all_records.append((src_text, gold, pred))
+
+print(f"Total test examples predicted: {len(all_records)}")
+
+# 2) Character-level confusion counts (gold_char -> pred_char)
+confusions = Counter()          # (gold_char, pred_char) -> count
+confusion_by_type = Counter()   # counts of replace/delete/insert
+total_chars = 0
+for src_text, gold, pred in all_records:
+    ops = align_chars(gold, pred)
+    for op, gch, pch in ops:
+        total_chars += (1 if op != 'insert' else 0)  # count only positions in gold for accuracy denom
+        if op == 'equal':
+            continue
+        # use placeholder for empty side
+        gkey = gch if gch != '' else '<eps>'
+        pkey = pch if pch != '' else '<eps>'
+        confusions[(gkey, pkey)] += 1
+        confusion_by_type[op] += 1
+
+# Print top substitution confusions (excluding pure insertions from pred-only)
+print("\nTop character confusions (gold -> predicted), sorted by frequency:")
+top_conf = confusions.most_common(TOP_K)
+for (g,p),cnt in top_conf:
+    print(f"{g!r}  ->  {p!r}   count={cnt}")
+
+print("\nSummary of edit operation counts:", dict(confusion_by_type))
+
+# Save confusion table to CSV
+with open(f"{SAVE_PREFIX}_char_confusions.csv", "w", encoding="utf-8", newline='') as f:
+    writer = csv.writer(f)
+    writer.writerow(["gold_char", "pred_char", "count"])
+    for (g,p),cnt in confusions.most_common():
+        writer.writerow([g, p, cnt])
+print(f"Wrote char confusions to {SAVE_PREFIX}_char_confusions.csv")
+
+# 3) Roman n-gram => example-level error association
+# For each example, mark if pred != gold (any edit). Then for each ngram in source, update totals/errors.
+ngram_totals = defaultdict(int)
+ngram_errors = defaultdict(int)
+example_errors = []
+for src_text, gold, pred in all_records:
+    is_err = (gold != pred)
+    example_errors.append(is_err)
+    s = src_text
+    s = s.lower()  # already cleaned earlier, but be safe
+    for n in range(1, NGRAM_MAX+1):
+        seen = set()
+        for i in range(len(s)-n+1):
+            ng = s[i:i+n]
+            # skip spaces
+            if ' ' in ng: 
+                continue
+            if ng in seen: 
+                continue
+            seen.add(ng)
+            ngram_totals[(n,ng)] += 1
+            if is_err:
+                ngram_errors[(n,ng)] += 1
+
+# compute error rate per ngram (filter by support)
+ngram_stats = []
+for (n,ng),tot in ngram_totals.items():
+    if tot < MIN_SUPPORT_NGRAM:
+        continue
+    errs = ngram_errors.get((n,ng), 0)
+    rate = errs / tot
+    ngram_stats.append((n, ng, tot, errs, rate))
+# sort by error rate (and then by support)
+ngram_stats_sorted = sorted(ngram_stats, key=lambda x: (-x[4], -x[2]))
+
+print(f"\nTop roman n-grams (n<= {NGRAM_MAX}) by error rate (min support = {MIN_SUPPORT_NGRAM}):")
+for n, ng, tot, errs, rate in ngram_stats_sorted[:TOP_K]:
+    print(f"n={n}  {ng!r}  support={tot}  errors={errs}  err_rate={rate:.3f}")
+
+# Save ngram stats to CSV
+with open(f"{SAVE_PREFIX}_roman_ngrams.csv", "w", encoding="utf-8", newline='') as f:
+    writer = csv.writer(f)
+    writer.writerow(["n", "ngram", "support", "errors", "error_rate"])
+    for (n,ng),tot in sorted(ngram_totals.items(), key=lambda x:(x[0][0], -x[1])):
+        errs = ngram_errors.get((n,ng), 0)
+        rate = errs/tot
+        writer.writerow([n, ng, tot, errs, rate])
+print(f"Wrote roman ngram stats to {SAVE_PREFIX}_roman_ngrams.csv")
+
+# 4) Complementary statistic: per-example edit distance distribution
+def simple_levenshtein(a,b):
+    if a==b: return 0
+    la, lb = len(a), len(b)
+    prev = list(range(lb+1))
+    for i,ca in enumerate(a, start=1):
+        cur = [i] + [0]*lb
+        for j, cb in enumerate(b, start=1):
+            cur[j] = min(cur[j-1]+1, prev[j]+1, prev[j-1] + (0 if ca==cb else 1))
+        prev = cur
+    return prev[lb]
+
+edists = [simple_levenshtein(gold, pred) for (_, gold, pred) in all_records]
+import statistics
+print("\nLevenshtein edit distance over test set:")
+print("mean:", statistics.mean(edists), "median:", statistics.median(edists), "max:", max(edists))
+
+# Optionally output sample errors for manual inspection (top few)
+print("\nSample errors (showing up to 30):")
+count_shown = 0
+for src, gold, pred in all_records:
+    if gold != pred:
+        print(f"SRC: {src}  GOLD: {gold}  PRED: {pred}")
+        count_shown += 1
+        if count_shown >= 30:
+            break
+
+print("\nDone. Files produced:")
+print(f" - {SAVE_PREFIX}_char_confusions.csv")
+print(f" - {SAVE_PREFIX}_roman_ngrams.csv")
